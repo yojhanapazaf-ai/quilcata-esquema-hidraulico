@@ -1,0 +1,1352 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visor 3D de Esquema Hidráulico de Riego — Quilcata 985 ha</title>
+  <style>
+    :root {
+      --bg-canvas: #eef3f8;
+      --card-bg: rgba(255, 255, 255, 0.90);
+      --card-border: #d0dce8;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --accent-primary: #0284c7;
+      --accent-secondary: #0d9488;
+      --accent-warn: #d97706;
+      --accent-danger: #dc2626;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body, html {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: var(--bg-canvas);
+      font-family: var(--font-sans);
+      color: var(--text-main);
+    }
+
+    #canvas-container {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* Contenedor de etiquetas 3D CSS2D */
+    #label-container {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* Cabecera Superior e Indicadores Principales (KPIs) */
+    .top-bar {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .brand-card {
+      pointer-events: auto;
+      background: var(--card-bg);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--card-border);
+      border-left: 4px solid var(--accent-primary);
+      border-radius: 8px;
+      padding: 12px 16px;
+      box-shadow: 0 4px 15px rgba(15, 23, 42, 0.06);
+    }
+
+    .brand-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge-tech {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      background: #e0f2fe;
+      color: #0369a1;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .brand-sub {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .kpi-grid {
+      pointer-events: auto;
+      display: grid;
+      grid-template-columns: repeat(4, auto);
+      gap: 10px;
+    }
+
+    .kpi-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      min-width: 155px;
+      box-shadow: 0 4px 15px rgba(15, 23, 42, 0.06);
+    }
+
+    .kpi-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+
+    .kpi-value {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent-primary);
+      margin-top: 3px;
+    }
+
+    .kpi-unit {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .kpi-sub {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    /* Panel Lateral Flotante de Capas y Controles */
+    .side-panel {
+      position: absolute;
+      top: 98px;
+      left: 16px;
+      width: 310px;
+      max-height: calc(100vh - 116px);
+      overflow-y: auto;
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 16px;
+      z-index: 10;
+      box-shadow: 0 8px 25px rgba(15, 23, 42, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .section-title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .layer-list {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .layer-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .layer-item:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+    }
+
+    .layer-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .layer-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .layer-item input[type="checkbox"] {
+      accent-color: var(--accent-primary);
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
+
+    /* Sliders de Simulación */
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: #f8fafc;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .control-val {
+      font-family: var(--font-mono);
+      color: var(--accent-primary);
+      font-weight: 700;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent-primary);
+      cursor: pointer;
+    }
+
+    /* Botones de Cámara */
+    .btn-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .btn-tech {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 7px 8px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-tech:hover {
+      background: #e0f2fe;
+      border-color: var(--accent-primary);
+      color: #0369a1;
+    }
+
+    /* Panel Derecho: Inspector de Elementos y Balance CHIRPS/Turc */
+    .right-panel {
+      position: absolute;
+      top: 98px;
+      right: 16px;
+      width: 320px;
+      max-height: calc(100vh - 116px);
+      overflow-y: auto;
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 16px;
+      z-index: 10;
+      box-shadow: 0 8px 25px rgba(15, 23, 42, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .data-table th, .data-table td {
+      padding: 5px 6px;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: left;
+    }
+
+    .data-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+      background: #f1f5f9;
+    }
+
+    .data-table tr:hover {
+      background: #e0f2fe;
+      cursor: pointer;
+    }
+
+    .inspector-box {
+      background: #f0f9ff;
+      border: 1px solid #bae6fd;
+      border-radius: 6px;
+      padding: 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .inspector-title {
+      font-weight: 700;
+      color: #0369a1;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    /* Etiquetas Flotantes 3D (CSS2DObject) */
+    .label-3d {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 7px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid #94a3b8;
+      color: #0f172a;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+      white-space: nowrap;
+      pointer-events: none;
+      transform: translateY(-10px);
+    }
+
+    .label-c0 {
+      border-left: 3px solid #dc2626;
+      color: #991b1b;
+    }
+
+    .label-r0 {
+      border-left: 3px solid #0284c7;
+      color: #075985;
+      background: #e0f2fe;
+    }
+
+    .label-block {
+      border-left: 3px solid #0d9488;
+      color: #115e59;
+    }
+
+    /* Barra de Estado Inferior */
+    .bottom-bar {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--card-bg);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 6px 16px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      z-index: 10;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+      white-space: nowrap;
+    }
+
+    @media (max-width: 1100px) {
+      .kpi-grid {
+        grid-template-columns: repeat(2, auto);
+      }
+      .right-panel {
+        display: none;
+      }
+    }
+  </style>
+
+  <!-- Importmap para cargar Three.js y sus complementos desde CDN oficial -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <!-- Lienzo WebGL y Contenedor de Etiquetas 3D -->
+  <div id="canvas-container"></div>
+  <div id="label-container"></div>
+
+  <!-- Barra Superior con Título Técnico y Tarjetas KPI -->
+  <header class="top-bar">
+    <div class="brand-card">
+      <div class="brand-title">
+        <span>ESQUEMA HIDRÁULICO 3D — PROYECTO QUILCATA</span>
+        <span class="badge-tech">CAD / WebGL v2.4</span>
+      </div>
+      <div class="brand-sub">
+        Antabamba, Apurímac | Cuenca: 239.4 km² | Coord. Base: -14.5381°, -72.7444° (3,620 – 4,260 m s.n.m.)
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Área de Cobertura</div>
+        <div class="kpi-value" id="kpi-area">985.00 <span class="kpi-unit">ha</span></div>
+        <div class="kpi-sub">8 Bloques (B01 a B08)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Caudal Adoptado (Qd)</div>
+        <div class="kpi-value" id="kpi-caudal">581.15 <span class="kpi-unit">L/s</span></div>
+        <div class="kpi-sub">Módulo: 0.59 L/s/ha (0.581 m³/s)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Volumen Útil (R0)</div>
+        <div class="kpi-value" id="kpi-volumen">127,500 <span class="kpi-unit">m³</span></div>
+        <div class="kpi-sub" id="kpi-cap-max">Cap. Máx NAMO: 150,000 m³ (85%)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Autonomía Efectiva</div>
+        <div class="kpi-value" id="kpi-autonomia">5.08 <span class="kpi-unit">días</span></div>
+        <div class="kpi-sub">Turno de riego: 12 h/día</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Panel Lateral Izquierdo: Control de Capas y Simulación -->
+  <aside class="side-panel">
+    <div>
+      <div class="section-title">
+        <span>Capas del Modelo 3D</span>
+        <span>VISIBILIDAD</span>
+      </div>
+      <div class="layer-list">
+        <label class="layer-item">
+          <span class="layer-left">
+            <span class="layer-dot" style="background: #84a98c;"></span>
+            Terreno Topográfico y Curvas
+          </span>
+          <input type="checkbox" id="chk-terrain" checked />
+        </label>
+        <label class="layer-item">
+          <span class="layer-left">
+            <span class="layer-dot" style="background: #0284c7;"></span>
+            Reservorio (R0) y Captación (C0)
+          </span>
+          <input type="checkbox" id="chk-reservoir" checked />
+        </label>
+        <label class="layer-item">
+          <span class="layer-left">
+            <span class="layer-dot" style="background: #2563eb;"></span>
+            Red de Tuberías y Flujo Hidráulico
+          </span>
+          <input type="checkbox" id="chk-pipes" checked />
+        </label>
+        <label class="layer-item">
+          <span class="layer-left">
+            <span class="layer-dot" style="background: #10b981;"></span>
+            Bloques de Riego (B01 – B08)
+          </span>
+          <input type="checkbox" id="chk-blocks" checked />
+        </label>
+        <label class="layer-item">
+          <span class="layer-left">
+            <span class="layer-dot" style="background: #f59e0b;"></span>
+            Equipos (Cabezales y Válvulas)
+          </span>
+          <input type="checkbox" id="chk-equipment" checked />
+        </label>
+        <label class="layer-item">
+          <span class="layer-left">
+            <span class="layer-dot" style="background: #334155;"></span>
+            Etiquetas Técnicas (C0, R0, B01–B08)
+          </span>
+          <input type="checkbox" id="chk-labels" checked />
+        </label>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">
+        <span>Parámetros de Simulación</span>
+        <span>TIEMPO REAL</span>
+      </div>
+      <div class="control-group">
+        <div class="control-header">
+          <span>Nivel de Agua Reservorio R0</span>
+          <span class="control-val" id="lbl-water-level">85%</span>
+        </div>
+        <input type="range" id="slider-water" min="5" max="100" value="85" />
+      </div>
+
+      <div class="control-group" style="margin-top: 8px;">
+        <div class="control-header">
+          <span>Exageración Vertical Terreno (Z)</span>
+          <span class="control-val" id="lbl-exag">1.2x</span>
+        </div>
+        <input type="range" id="slider-exag" min="0.5" max="2.5" step="0.1" value="1.2" />
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">
+        <span>Vistas Predefinidas</span>
+        <span>CÁMARA</span>
+      </div>
+      <div class="btn-grid">
+        <button class="btn-tech" id="btn-view-iso">Vista General 3D</button>
+        <button class="btn-tech" id="btn-view-top">Planta 2D (Cenital)</button>
+        <button class="btn-tech" id="btn-view-c0">Ir a Captación C0</button>
+        <button class="btn-tech" id="btn-view-r0">Ir a Reservorio R0</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Panel Lateral Derecho: Inspector de Nodos y Resumen CHIRPS/Turc -->
+  <aside class="right-panel">
+    <div>
+      <div class="section-title">
+        <span>Inspector de Elemento</span>
+        <span>SELECCIÓN</span>
+      </div>
+      <div class="inspector-box" id="inspector-content">
+        <div class="inspector-title">R0 — Reservorio Principal de Regulación</div>
+        <div>• Cota Corona / NAMO: <b>4,045.0 m s.n.m.</b></div>
+        <div>• Dimensiones: <b>73.8 m × 57.7 m × 4.5 m</b></div>
+        <div>• Volumen Máx / Útil: <b>150,000 m³</b></div>
+        <div>• Línea de Aducción: <b>Ø 400 mm HDPE (C0 → R0)</b></div>
+        <div style="color:#64748b; margin-top:4px;">(Haz clic sobre un bloque o estructura en el modelo 3D o en la tabla inferior para inspeccionar).</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">
+        <span>Matriz de Bloques (B01 – B08)</span>
+        <span>985.0 HA</span>
+      </div>
+      <table class="data-table" id="blocks-table">
+        <thead>
+          <tr>
+            <th>Cod</th>
+            <th>Sector</th>
+            <th>Área (ha)</th>
+            <th>Q (L/s)</th>
+            <th>Cota (m)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Se puebla dinámicamente por JS -->
+        </tbody>
+      </table>
+    </div>
+
+    <div>
+      <div class="section-title">
+        <span>Balance Hidrológico (CHIRPS 1981–2024)</span>
+        <span>N = 44 AÑOS</span>
+      </div>
+      <table class="data-table">
+        <tbody>
+          <tr><td>Precipitación Media Anual</td><td><b>732.71 mm/año</b></td></tr>
+          <tr><td>Precipitación P50 / P75 / P90</td><td><b>722.7 / 551.2 / 398.3 mm</b></td></tr>
+          <tr><td>Temp. Media (ERA5-Land)</td><td><b>2.82 °C (σ = 0.54 °C)</b></td></tr>
+          <tr><td>Evapotranspiración Real (Turc)</td><td><b>331.21 mm/año</b></td></tr>
+          <tr><td>Escorrentía Media Anual</td><td><b>401.50 mm/año</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </aside>
+
+  <!-- Barra Inferior de Coordenadas y Controles -->
+  <div class="bottom-bar" id="status-bar">
+    Controles: [Clic Izq + Arrastrar] Rotar | [Rueda] Zoom | [Clic Der + Arrastrar] Paneo | [Clic sobre objeto] Inspeccionar
+  </div>
+
+  <!-- Lógica Principal en Three.js -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+    // =========================================================================
+    // 1. DATOS DE INGENIERÍA DEL ESQUEMA HIDRÁULICO (ESCALA MÉTRICA EN 3D)
+    // =========================================================================
+    // Escala de escena: 1 unidad 3D = 10 metros reales en planta (Área de 2.4 km x 2.0 km)
+    const PROJECT_PARAMS = {
+      totalAreaHa: 985.0,
+      adoptedFlowLps: 581.15,
+      maxVolumeM3: 150000,
+      irrigationHoursPerDay: 12,
+      waterLevelPct: 85
+    };
+
+    const NODES_DATA = {
+      C0: {
+        id: 'C0',
+        name: 'C0 — Captación y Bocatoma Ccarampa (H = 25 m)',
+        type: 'Captación / Bocatoma',
+        x: -85, z: -70,
+        cota: 4230.0,
+        details: [
+          'Coordenadas KML: -14.538107°, -72.744401°',
+          'Cota de Captación: 4,230.0 m s.n.m.',
+          'Caudal de Captación: 650.0 L/s (Incluye desarenador)',
+          'Conducción a R0: Tubería HDPE Ø 400 mm (L = 1,420 m)'
+        ]
+      },
+      R0: {
+        id: 'R0',
+        name: 'R0 — Reservorio Principal de Regulación',
+        type: 'Reservorio / Almacenamiento',
+        x: -35, z: -20,
+        cota: 4045.0,
+        details: [
+          'Cota NAMO: 4,045.0 m s.n.m. | Corona: 4,046.5 m s.n.m.',
+          'Volumen Útil Nominal: 150,000 m³ (Geomembrana HDPE 1.5 mm)',
+          'Cabezal Central: Filtrado de malla + Venturi + Manómetros',
+          'Caudal de Salida Matriz: 581.15 L/s hacia bloques B01–B08'
+        ]
+      }
+    };
+
+    const BLOCKS_DATA = [
+      { id: 'B01', name: 'Sector Ccarampa Alto',  ha: 115.0, q: 67.85, cota: 3980, x: -55, z:  20, w: 24, d: 18, trunkPt: [-35, 20] },
+      { id: 'B02', name: 'Sector Ccarampa Medio', ha: 128.0, q: 75.52, cota: 3915, x: -55, z:  50, w: 26, d: 19, trunkPt: [-35, 50] },
+      { id: 'B03', name: 'Sector Sonccoyuma',     ha: 134.0, q: 79.06, cota: 3860, x:  -5, z:  15, w: 26, d: 20, trunkPt: [-15, 15] },
+      { id: 'B04', name: 'Sector Quilcata Norte', ha: 142.0, q: 83.78, cota: 3810, x:  -5, z:  48, w: 28, d: 20, trunkPt: [-15, 48] },
+      { id: 'B05', name: 'Sector Quilcata Centro',ha: 118.0, q: 69.62, cota: 3765, x:  38, z:   5, w: 24, d: 19, trunkPt: [ 20,  5] },
+      { id: 'B06', name: 'Sector Chuñohuacho',    ha: 124.0, q: 73.16, cota: 3720, x:  38, z:  35, w: 25, d: 19, trunkPt: [ 20, 35] },
+      { id: 'B07', name: 'Sector Mollocco',       ha: 116.0, q: 68.44, cota: 3675, x:  80, z:  22, w: 24, d: 18, trunkPt: [ 60, 22] },
+      { id: 'B08', name: 'Sector Matara Bajo',    ha: 108.0, q: 63.72, cota: 3630, x:  80, z:  55, w: 23, d: 18, trunkPt: [ 60, 55] }
+    ];
+
+    // =========================================================================
+    // 2. INICIALIZACIÓN DE ESCENA, CÁMARA, RENDERIZADORES Y CONTROLES
+    // =========================================================================
+    const container = document.getElementById('canvas-container');
+    const labelContainer = document.getElementById('label-container');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xeef3f8);
+    scene.fog = new THREE.FogExp2(0xeef3f8, 0.0018);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1500);
+    camera.position.set(-40, 125, 165);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+    const labelRenderer = new CSS2DRenderer();
+    labelRenderer.setSize(window.innerWidth, window.innerHeight);
+    labelContainer.appendChild(labelRenderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.maxPolarAngle = Math.PI / 2 - 0.03; // Evita pasar debajo del terreno
+    controls.minDistance = 20;
+    controls.maxDistance = 420;
+    controls.target.set(10, 15, 10);
+
+    // Iluminación Técnica Clara
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xfffbeb, 1.15);
+    dirLight.position.set(-120, 180, 90);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.near = 10;
+    dirLight.shadow.camera.far = 450;
+    const d = 160;
+    dirLight.shadow.camera.left = -d;
+    dirLight.shadow.camera.right = d;
+    dirLight.shadow.camera.top = d;
+    dirLight.shadow.camera.bottom = -d;
+    scene.add(dirLight);
+
+    // Grilla de referencia técnica en la base
+    const gridHelper = new THREE.GridHelper(280, 28, 0x94a3b8, 0xcbd5e1);
+    gridHelper.position.y = -2;
+    scene.add(gridHelper);
+
+    // =========================================================================
+    // 3. GRUPOS DE CAPAS (TERRENO, RESERVORIO, TUBERÍAS, BLOQUES, EQUIPOS, LABELS)
+    // =========================================================================
+    const worldScaleGroup = new THREE.Group();
+    scene.add(worldScaleGroup);
+
+    const layers = {
+      terrain: new THREE.Group(),
+      reservoir: new THREE.Group(),
+      pipes: new THREE.Group(),
+      blocks: new THREE.Group(),
+      equipment: new THREE.Group(),
+      labels: new THREE.Group()
+    };
+
+    Object.values(layers).forEach(g => worldScaleGroup.add(g));
+
+    const interactiveObjects = [];
+    const cssLabels = [];
+
+    // =========================================================================
+    // 4. FUNCIÓN MATEMÁTICA DE TOPOGRAFÍA (MODELO DIGITAL DE ELEVACIÓN)
+    // =========================================================================
+    // Modela una cordillera andina en el sector Noroeste (-X, -Z) descendiendo hacia
+    // las terrazas agrícolas en el Sureste (+X, +Z), con un cauce fluvial definido.
+    function getTerrainElevation(x, z) {
+      // Pendiente regional general de Noroeste (alta montaña) a Sureste (valle agrícola)
+      const slope = (-x * 0.16) + (-z * 0.18) + 18;
+
+      // Cordilleras y cumbres en la cabecera
+      const ridge1 = 16 * Math.exp(-((x + 95) ** 2 + (z + 85) ** 2) / 2600);
+      const ridge2 = 12 * Math.exp(-((x + 30) ** 2 + (z + 90) ** 2) / 3200);
+      const ridge3 = 10 * Math.exp(-((x - 55) ** 2 + (z + 80) ** 2) / 2800);
+
+      // Rugosidad natural de laderas (ondulación trigonométrica multiescala)
+      const roughness = 2.2 * Math.sin(x * 0.07) * Math.cos(z * 0.07)
+                      + 1.1 * Math.sin(x * 0.15 + z * 0.12);
+
+      // Cauce del río principal que baja desde C0 (-85, -70) hacia el borde izquierdo
+      const riverCenterX = -85 - (z + 70) * 0.22;
+      const distRiver = Math.abs(x - riverCenterX);
+      const riverCarve = -4.5 * Math.exp(-(distRiver ** 2) / 90);
+
+      // Plataforma nivelada alrededor del Reservorio R0 (-35, -20)
+      const distR0 = Math.hypot(x - (-35), z - (-20));
+      let h = slope + ridge1 + ridge2 + ridge3 + roughness + riverCarve;
+
+      if (distR0 < 16) {
+        const flatR0 = 23.5;
+        const blend = Math.smoothstep ? THREE.MathUtils.smoothstep(distR0, 8, 16) : Math.min(1, Math.max(0, (distR0 - 8) / 8));
+        h = THREE.MathUtils.lerp(flatR0, h, blend);
+      }
+
+      return Math.max(0.5, h);
+    }
+
+    // =========================================================================
+    // 5. CONSTRUCCIÓN DEL TERRENO TOPOGRÁFICO + CURVAS DE NIVEL + RÍO
+    // =========================================================================
+    function buildTerrain() {
+      const width = 260, depth = 220;
+      const segW = 160, segD = 140;
+      const geo = new THREE.PlaneGeometry(width, depth, segW, segD);
+      geo.rotateX(-Math.PI / 2);
+
+      const pos = geo.attributes.position;
+      const colors = [];
+      const color = new THREE.Color();
+
+      for (let i = 0; i < pos.count; i++) {
+        const vx = pos.getX(i);
+        const vz = pos.getZ(i);
+        const vy = getTerrainElevation(vx, vz);
+        pos.setY(i, vy);
+
+        // Coloración hipsométrica técnica suave (verde valle -> ocre ladera -> gris cumbre)
+        const normH = THREE.MathUtils.clamp((vy - 2) / 48, 0, 1);
+        if (normH < 0.35) {
+          color.setHSL(0.28, 0.32, 0.72 - normH * 0.15);
+        } else if (normH < 0.72) {
+          color.setHSL(0.11, 0.30, 0.68 - (normH - 0.35) * 0.2);
+        } else {
+          color.setHSL(0.08, 0.14, 0.62 + (normH - 0.72) * 0.25);
+        }
+        colors.push(color.r, color.g, color.b);
+      }
+
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      geo.computeVertexNormals();
+
+      const mat = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.88,
+        metalness: 0.05,
+        flatShading: false,
+        side: THREE.DoubleSide
+      });
+
+      const terrainMesh = new THREE.Mesh(geo, mat);
+      terrainMesh.receiveShadow = true;
+      layers.terrain.add(terrainMesh);
+
+      // Malla alámbrica sutil de ingeniería (Curvas/Triangulación TIN suave)
+      const wireGeo = new THREE.WireframeGeometry(geo);
+      const wireMat = new THREE.LineBasicMaterial({
+        color: 0x64748b,
+        transparent: true,
+        opacity: 0.08
+      });
+      const wireLines = new THREE.LineSegments(wireGeo, wireMat);
+      wireLines.position.y = 0.05;
+      layers.terrain.add(wireLines);
+
+      // Cauce del Río en la Quebrada Occidental (pasa por la Captación C0)
+      const riverPts = [];
+      for (let rz = -105; rz <= 105; rz += 5) {
+        const rx = -85 - (rz + 70) * 0.22 + Math.sin(rz * 0.08) * 2.5;
+        const ry = getTerrainElevation(rx, rz) + 0.35;
+        riverPts.push(new THREE.Vector3(rx, ry, rz));
+      }
+      const riverCurve = new THREE.CatmullRomCurve3(riverPts);
+      const riverGeo = new THREE.TubeGeometry(riverCurve, 80, 1.6, 8, false);
+      const riverMat = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        roughness: 0.2,
+        metalness: 0.1,
+        transparent: true,
+        opacity: 0.85
+      });
+      const riverMesh = new THREE.Mesh(riverGeo, riverMat);
+      layers.terrain.add(riverMesh);
+    }
+
+    // =========================================================================
+    // 6. CAPTACIÓN (C0) Y RESERVORIO PRINCIPAL (R0 CON NIVEL DE AGUA ANIMADO)
+    // =========================================================================
+    let waterMeshR0 = null;
+    const r0BaseY = getTerrainElevation(NODES_DATA.R0.x, NODES_DATA.R0.z);
+
+    function buildCaptacionAndReservoir() {
+      // --- A) CAPTACIÓN C0 (Bocatoma + Barraje + Desarenador) ---
+      const c0X = NODES_DATA.C0.x;
+      const c0Z = NODES_DATA.C0.z;
+      const c0Y = getTerrainElevation(c0X, c0Z);
+
+      const c0Group = new THREE.Group();
+      c0Group.position.set(c0X, c0Y, c0Z);
+
+      // Muro de presa / barraje de captación
+      const damGeo = new THREE.BoxGeometry(10, 4.5, 3.2);
+      const concreteMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.6 });
+      const damMesh = new THREE.Mesh(damGeo, concreteMat);
+      damMesh.position.y = 2.0;
+      damMesh.castShadow = true;
+      damMesh.userData = NODES_DATA.C0;
+      interactiveObjects.push(damMesh);
+      c0Group.add(damMesh);
+
+      // Espejo de agua aguas arriba de la captación C0
+      const pondGeo = new THREE.CylinderGeometry(5.5, 4.0, 1.2, 20);
+      const waterMatC0 = new THREE.MeshStandardMaterial({
+        color: 0x0284c7,
+        transparent: true,
+        opacity: 0.82,
+        roughness: 0.15
+      });
+      const pondMesh = new THREE.Mesh(pondGeo, waterMatC0);
+      pondMesh.position.set(1.5, 2.8, -4.5);
+      c0Group.add(pondMesh);
+
+      // Nave de desarenador lateral
+      const desGeo = new THREE.BoxGeometry(5.5, 2.2, 2.8);
+      const desMesh = new THREE.Mesh(desGeo, concreteMat);
+      desMesh.position.set(6.5, 1.2, 2.5);
+      desMesh.castShadow = true;
+      desMesh.userData = NODES_DATA.C0;
+      interactiveObjects.push(desMesh);
+      c0Group.add(desMesh);
+
+      layers.reservoir.add(c0Group);
+      add3DLabel('C0 • Captación (4,230 m)', new THREE.Vector3(c0X, c0Y + 6.5, c0Z), 'label-c0');
+
+      // --- B) RESERVORIO PRINCIPAL R0 (Talud Trapezoidal + Nivel de Agua Visible) ---
+      const r0X = NODES_DATA.R0.x;
+      const r0Z = NODES_DATA.R0.z;
+
+      const r0Group = new THREE.Group();
+      r0Group.position.set(r0X, r0BaseY, r0Z);
+
+      // Dique perimetral tronco-piramidal (inspirado en plano 73.8m x 57.7m)
+      const outerGeo = new THREE.BoxGeometry(18, 4.2, 14);
+      const dikeMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.7 });
+      const outerDike = new THREE.Mesh(outerGeo, dikeMat);
+      outerDike.position.y = 2.1;
+      outerDike.castShadow = true;
+      outerDike.receiveShadow = true;
+      outerDike.userData = NODES_DATA.R0;
+      interactiveObjects.push(outerDike);
+      r0Group.add(outerDike);
+
+      // Revestimiento interior oscuro (geomembrana HDPE)
+      const linerGeo = new THREE.BoxGeometry(15.6, 3.2, 11.6);
+      const linerMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 });
+      const linerMesh = new THREE.Mesh(linerGeo, linerMat);
+      linerMesh.position.y = 2.65;
+      r0Group.add(linerMesh);
+
+      // Masa de agua visible y regulable dentro del Reservorio R0
+      const waterGeo = new THREE.BoxGeometry(15.2, 3.0, 11.2);
+      const waterMatR0 = new THREE.MeshStandardMaterial({
+        color: 0x0ea5e9,
+        emissive: 0x0284c7,
+        emissiveIntensity: 0.18,
+        roughness: 0.1,
+        metalness: 0.1,
+        transparent: true,
+        opacity: 0.86
+      });
+      waterMeshR0 = new THREE.Mesh(waterGeo, waterMatR0);
+      waterMeshR0.position.y = 2.7;
+      waterMeshR0.userData = NODES_DATA.R0;
+      interactiveObjects.push(waterMeshR0);
+      r0Group.add(waterMeshR0);
+
+      layers.reservoir.add(r0Group);
+      add3DLabel('R0 • Reservorio (150,000 m³)', new THREE.Vector3(r0X, r0BaseY + 6.8, r0Z), 'label-r0');
+    }
+
+    // Actualización del nivel de agua de R0 y KPIs en tiempo real
+    function updateReservoirWaterLevel(pct) {
+      PROJECT_PARAMS.waterLevelPct = pct;
+      if (waterMeshR0) {
+        const scaleY = Math.max(0.05, pct / 100);
+        waterMeshR0.scale.y = scaleY;
+        // Ajuste de altura para que crezca desde la solera del reservorio
+        waterMeshR0.position.y = 1.25 + (3.0 * scaleY) / 2;
+      }
+
+      const currentVol = Math.round(PROJECT_PARAMS.maxVolumeM3 * (pct / 100));
+      const dailyConsumptionM3 = PROJECT_PARAMS.adoptedFlowLps * 0.001 * (PROJECT_PARAMS.irrigationHoursPerDay * 3600);
+      const autonomyDays = (currentVol / dailyConsumptionM3).toFixed(2);
+
+      document.getElementById('lbl-water-level').textContent = `${pct}%`;
+      document.getElementById('kpi-volumen').innerHTML = `${currentVol.toLocaleString('en-US')} <span class="kpi-unit">m³</span>`;
+      document.getElementById('kpi-cap-max').textContent = `Cap. Máx NAMO: 150,000 m³ (${pct}%)`;
+      document.getElementById('kpi-autonomia').innerHTML = `${autonomiaDays} <span class="kpi-unit">días</span>`;
+    }
+
+    // =========================================================================
+    // 7. RED DE TUBERÍAS Y PARTÍCULAS ANIMADAS DE FLUJO HIDRÁULICO
+    // =========================================================================
+    const flowParticles = [];
+
+    function createPipeSegment(points2D, radius, colorHex, addParticles = true) {
+      const pts3D = [];
+      for (let i = 0; i < points2D.length; i++) {
+        const [px, pz] = points2D[i];
+        // Interpolamos suavemente entre puntos para que la tubería siga el relieve
+        if (i > 0) {
+          const [prevX, prevZ] = points2D[i - 1];
+          const steps = 12;
+          for (let s = 1; s <= steps; s++) {
+            const t = s / steps;
+            const ix = THREE.MathUtils.lerp(prevX, px, t);
+            const iz = THREE.MathUtils.lerp(prevZ, pz, t);
+            const iy = getTerrainElevation(ix, iz) + 0.65;
+            pts3D.push(new THREE.Vector3(ix, iy, iz));
+          }
+        } else {
+          pts3D.push(new THREE.Vector3(px, getTerrainElevation(px, pz) + 0.65, pz));
+        }
+      }
+
+      const curve = new THREE.CatmullRomCurve3(pts3D);
+      const tubeGeo = new THREE.TubeGeometry(curve, pts3D.length * 2, radius, 10, false);
+      const tubeMat = new THREE.MeshStandardMaterial({
+        color: colorHex,
+        roughness: 0.35,
+        metalness: 0.25
+      });
+      const tubeMesh = new THREE.Mesh(tubeGeo, tubeMat);
+      tubeMesh.castShadow = true;
+      layers.pipes.add(tubeMesh);
+
+      if (addParticles) {
+        const numParticles = Math.max(3, Math.floor(curve.getLength() / 18));
+        const pGeo = new THREE.SphereGeometry(radius * 1.45, 8, 8);
+        const pMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+        for (let k = 0; k < numParticles; k++) {
+          const pMesh = new THREE.Mesh(pGeo, pMat);
+          layers.pipes.add(pMesh);
+          flowParticles.push({
+            mesh: pMesh,
+            curve: curve,
+            offset: k / numParticles,
+            speed: 0.08 + Math.random() * 0.02
+          });
+        }
+      }
+    }
+
+    function buildPipelines() {
+      // 1. Línea de Conducción Primaria: Captación C0 (-85, -70) -> Reservorio R0 (-35, -20)
+      createPipeSegment(
+        [[-85, -70], [-70, -55], [-52, -38], [-35, -20]],
+        0.55,
+        0xdc2626, // Rojo técnico (línea de aducción principal)
+        true
+      );
+
+      // 2. Línea Matriz Principal desde R0 (-35, -20) recorriendo los ejes de distribución
+      const mainTrunk = [
+        [-35, -20],
+        [-35,  20],
+        [-35,  50],
+        [-15,  15],
+        [-15,  48],
+        [ 20,   5],
+        [ 20,  35],
+        [ 60,  22],
+        [ 60,  55]
+      ];
+      // Tramo Matriz Troncal Oeste-Este
+      createPipeSegment(
+        [[-35, -20], [-35, 20], [-15, 15], [20, 5], [60, 22]],
+        0.48,
+        0x1d4ed8, // Azul matriz primaria
+        true
+      );
+
+      // Ramales Secundarios hacia cada par de bloques
+      createPipeSegment([[-35, 20], [-35, 50]], 0.36, 0x0284c7, true);
+      createPipeSegment([[-15, 15], [-15, 48]], 0.36, 0x0284c7, true);
+      createPipeSegment([[ 20,  5], [ 20, 35]], 0.36, 0x0284c7, true);
+      createPipeSegment([[ 60, 22], [ 60, 55]], 0.36, 0x0284c7, true);
+
+      // 3. Derivaciones Terciarias a cada Bloque (B01 a B08)
+      BLOCKS_DATA.forEach(b => {
+        createPipeSegment([b.trunkPt, [b.x, b.z]], 0.28, 0x0d9488, true);
+      });
+    }
+
+    // =========================================================================
+    // 8. BLOQUES DE RIEGO (B01 – B08) Y EQUIPOS HIDROMECÁNICOS (CABEZALES)
+    // =========================================================================
+    function buildBlocksAndEquipment() {
+      // Cabezal Central de Filtrado e Impulsión junto al Reservorio R0
+      const r0EqX = NODES_DATA.R0.x + 11.5;
+      const r0EqZ = NODES_DATA.R0.z + 2;
+      const r0EqY = getTerrainElevation(r0EqX, r0EqZ);
+
+      const pumpStationGroup = new THREE.Group();
+      pumpStationGroup.position.set(r0EqX, r0EqY, r0EqZ);
+
+      const shedGeo = new THREE.BoxGeometry(4.5, 2.8, 3.5);
+      const shedMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.4 });
+      const shedMesh = new THREE.Mesh(shedGeo, shedMat);
+      shedMesh.position.y = 1.4;
+      shedMesh.castShadow = true;
+      pumpStationGroup.add(shedMesh);
+
+      // Batería de filtros de malla y tanque de fertirriego
+      for (let f = -1.2; f <= 1.2; f += 1.2) {
+        const filterGeo = new THREE.CylinderGeometry(0.45, 0.45, 2.2, 12);
+        const filterMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.5, roughness: 0.3 });
+        const filterMesh = new THREE.Mesh(filterGeo, filterMat);
+        filterMesh.position.set(f, 1.2, 2.5);
+        pumpStationGroup.add(filterMesh);
+      }
+      layers.equipment.add(pumpStationGroup);
+
+      // Construcción de los 8 Bloques de Riego (B01 a B08)
+      const tbody = document.querySelector('#blocks-table tbody');
+      tbody.innerHTML = '';
+
+      BLOCKS_DATA.forEach((b, idx) => {
+        const by = getTerrainElevation(b.x, b.z);
+
+        // Parcela conformada sobre el terreno (Geometría adaptada a la pendiente local)
+        const parcelGeo = new THREE.PlaneGeometry(b.w, b.d, 10, 10);
+        parcelGeo.rotateX(-Math.PI / 2);
+        const pPos = parcelGeo.attributes.position;
+        for (let i = 0; i < pPos.count; i++) {
+          const lx = pPos.getX(i) + b.x;
+          const lz = pPos.getZ(i) + b.z;
+          pPos.setY(i, getTerrainElevation(lx, lz) + 0.25);
+        }
+        parcelGeo.computeVertexNormals();
+
+        const parcelColor = idx % 2 === 0 ? 0x10b981 : 0x059669;
+        const parcelMat = new THREE.MeshStandardMaterial({
+          color: parcelColor,
+          roughness: 0.65,
+          metalness: 0.05,
+          transparent: true,
+          opacity: 0.85,
+          side: THREE.DoubleSide
+        });
+
+        const parcelMesh = new THREE.Mesh(parcelGeo, parcelMat);
+        parcelMesh.receiveShadow = true;
+        parcelMesh.userData = {
+          id: b.id,
+          name: `${b.id} — ${b.name}`,
+          type: 'Bloque de Riego Tecnificado',
+          x: b.x,
+          z: b.z,
+          cota: b.cota,
+          details: [
+            `Área Neta del Bloque: ${b.ha.toFixed(1)} ha`,
+            `Caudal de Diseño: ${b.q.toFixed(2)} L/s (Módulo: 0.59 L/s/ha)`,
+            `Cota Media del Sector: ${b.cota} m s.n.m.`,
+            `Red Interna: Secundaria Ø 90 mm | Portalateral Ø 63 mm | Lateral Ø 16 mm`,
+            `Presión de Entrada al Lateral (hm): 10.40 m.c.a. (Eficiencia 90%)`
+          ]
+        };
+        interactiveObjects.push(parcelMesh);
+        layers.blocks.add(parcelMesh);
+
+        // Borde técnico del bloque y líneas de goteo (surcado cada 6 m representativo)
+        const borderEdges = new THREE.EdgesGeometry(parcelGeo);
+        const borderLine = new THREE.LineSegments(
+          borderEdges,
+          new THREE.LineBasicMaterial({ color: 0x064e3b, transparent: true, opacity: 0.45 })
+        );
+        layers.blocks.add(borderLine);
+
+        // Equipo Hidromecánico en la cabecera del bloque (Cabezal de Campo + Válvula Reductora)
+        const eqX = b.x - b.w * 0.35;
+        const eqZ = b.z;
+        const eqY = getTerrainElevation(eqX, eqZ);
+
+        const headGroup = new THREE.Group();
+        headGroup.position.set(eqX, eqY, eqZ);
+
+        const basePedestal = new THREE.Mesh(
+          new THREE.BoxGeometry(2.2, 1.4, 2.2),
+          new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3 })
+        );
+        basePedestal.position.y = 0.7;
+        basePedestal.castShadow = true;
+        headGroup.add(basePedestal);
+
+        const valveCyl = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.55, 0.55, 2.1, 12),
+          new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.4, roughness: 0.3 })
+        );
+        valveCyl.position.y = 1.6;
+        headGroup.add(valveCyl);
+
+        layers.equipment.add(headGroup);
+
+        // Etiqueta Técnica 3D del Bloque
+        add3DLabel(
+          `${b.id} (${b.ha} ha • ${b.q} L/s)`,
+          new THREE.Vector3(b.x, by + 3.8, b.z),
+          'label-block'
+        );
+
+        // Fila interactiva en la tabla derecha
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><b>${b.id}</b></td>
+          <td>${b.name.replace('Sector ', '')}</td>
+          <td>${b.ha.toFixed(0)}</td>
+          <td>${b.q.toFixed(1)}</td>
+          <td>${b.cota}</td>
+        `;
+        tr.addEventListener('click', () => {
+          focusOnPoint(b.x, by, b.z);
+          updateInspector(parcelMesh.userData);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    // =========================================================================
+    // 9. ETIQUETAS 3D (CSS2DOBJECT) E INTERACCIÓN (RAYCASTING)
+    // =========================================================================
+    function add3DLabel(text, positionVec3, extraClass = '') {
+      const div = document.createElement('div');
+      div.className = `label-3d ${extraClass}`;
+      div.textContent = text;
+      const labelObj = new CSS2DObject(div);
+      labelObj.position.copy(positionVec3);
+      layers.labels.add(labelObj);
+      cssLabels.push(div);
+    }
+
+    function updateInspector(data) {
+      const box = document.getElementById('inspector-content');
+      const linesHtml = data.details.map(line => `<div>• ${line}</div>`).join('');
+      box.innerHTML = `
+        <div class="inspector-title">${data.name}</div>
+        ${linesHtml}
+      `;
+    }
+
+    function focusOnPoint(tx, ty, tz, dist = 65) {
+      const scaledY = ty * parseFloat(document.getElementById('slider-exag').value);
+      controls.target.set(tx, scaledY, tz);
+      camera.position.set(tx - dist * 0.4, scaledY + dist * 0.75, tz + dist * 0.85);
+      controls.update();
+    }
+
+    // Raycaster para seleccionar C0, R0 o los bloques B01–B08 con un clic
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    renderer.domElement.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(interactiveObjects, false);
+      if (intersects.length > 0) {
+        const hit = intersects[0].object;
+        if (hit.userData && hit.userData.name) {
+          updateInspector(hit.userData);
+        }
+      }
+    });
+
+    // =========================================================================
+    // 10. EVENTOS DE INTERFAZ (CAPAS, SLIDERS Y VISTAS DE CÁMARA)
+    // =========================================================================
+    document.getElementById('chk-terrain').addEventListener('change', e => {
+      layers.terrain.visible = e.target.checked;
+    });
+    document.getElementById('chk-reservoir').addEventListener('change', e => {
+      layers.reservoir.visible = e.target.checked;
+    });
+    document.getElementById('chk-pipes').addEventListener('change', e => {
+      layers.pipes.visible = e.target.checked;
+    });
+    document.getElementById('chk-blocks').addEventListener('change', e => {
+      layers.blocks.visible = e.target.checked;
+    });
+    document.getElementById('chk-equipment').addEventListener('change', e => {
+      layers.equipment.visible = e.target.checked;
+    });
+    document.getElementById('chk-labels').addEventListener('change', e => {
+      const show = e.target.checked;
+      cssLabels.forEach(div => {
+        div.style.display = show ? 'block' : 'none';
+      });
+    });
+
+    // Slider de nivel de agua en R0
+    document.getElementById('slider-water').addEventListener('input', e => {
+      updateReservoirWaterLevel(parseInt(e.target.value, 10));
+    });
+
+    // Slider de exageración vertical (Z)
+    document.getElementById('slider-exag').addEventListener('input', e => {
+      const val = parseFloat(e.target.value);
+      worldScaleGroup.scale.y = val;
+      document.getElementById('lbl-exag').textContent = `${val.toFixed(1)}x`;
+    });
+
+    // Botones de vistas rápidas
+    document.getElementById('btn-view-iso').addEventListener('click', () => {
+      controls.target.set(10, 15, 10);
+      camera.position.set(-40, 125, 165);
+      controls.update();
+    });
+
+    document.getElementById('btn-view-top').addEventListener('click', () => {
+      controls.target.set(0, 0, 5);
+      camera.position.set(0, 250, 6);
+      controls.update();
+    });
+
+    document.getElementById('btn-view-c0').addEventListener('click', () => {
+      const c0 = NODES_DATA.C0;
+      focusOnPoint(c0.x, getTerrainElevation(c0.x, c0.z), c0.z, 45);
+      updateInspector(c0);
+    });
+
+    document.getElementById('btn-view-r0').addEventListener('click', () => {
+      const r0 = NODES_DATA.R0;
+      focusOnPoint(r0.x, getTerrainElevation(r0.x, r0.z), r0.z, 50);
+      updateInspector(r0);
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      labelRenderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // =========================================================================
+    // 11. CONSTRUCCIÓN INICIAL Y BUCLE DE ANIMACIÓN (60 FPS)
+    // =========================================================================
+    buildTerrain();
+    buildCaptacionAndReservoir();
+    buildPipelines();
+    buildBlocksAndEquipment();
+    worldScaleGroup.scale.y = 1.2;
+    updateReservoirWaterLevel(85);
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+
+      // Animación continua de las partículas de flujo hidráulico en las tuberías
+      for (let i = 0; i < flowParticles.length; i++) {
+        const fp = flowParticles[i];
+        fp.offset = (fp.offset + dt * fp.speed) % 1.0;
+        const pos = fp.curve.getPointAt(fp.offset);
+        fp.mesh.position.copy(pos);
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+      labelRenderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
